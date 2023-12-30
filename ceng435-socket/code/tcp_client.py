@@ -29,7 +29,8 @@ def send_object(sock, filepath):
     return True
 
 def start_client():
-    HOST = "127.0.0.1"
+    # HOST = "127.0.0.1"
+    HOST = socket.gethostbyname("server")  # Use this if you are using docker compose
     PORT = 8000
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:

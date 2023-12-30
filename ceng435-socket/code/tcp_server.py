@@ -32,7 +32,8 @@ def receive_object(conn, filename):
     return True   # Return True if the file is received successfully
 
 def start_server():
-    HOST = "127.0.0.1"
+    HOST = "server"
+    #HOST = "127.0.0.1"
     PORT = 8000
 
     # Create a directory to save received files
