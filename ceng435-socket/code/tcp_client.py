@@ -2,15 +2,19 @@ import socket
 import os
 
 def send_object(sock, filepath):
-    try:
-        with open(filepath, 'rb') as file:
-            # Send the file size first
-            file_size = os.path.getsize(filepath)
-            sock.sendall(file_size.to_bytes(4, 'big'))
+    if not os.path.exists(filepath):
+        print(f"File not found: {filepath}")
+        return False
 
-            # Now send the file data in chunks
+    try:
+        file_size = os.path.getsize(filepath)
+        # Send the size of the object first
+        sock.sendall(file_size.to_bytes(4, 'big'))
+
+        # Send the object data
+        with open(filepath, 'rb') as file:
             while True:
-                data = file.read(1024)  # Read in chunks of 1024 bytes
+                data = file.read(1024)  # Read in chunks
                 if not data:
                     break
                 sock.sendall(data)
@@ -18,9 +22,6 @@ def send_object(sock, filepath):
         # Wait for acknowledgment
         ack = sock.recv(1024)
         print(f"Acknowledged: {ack.decode()}")
-    except FileNotFoundError:
-        print(f"File not found: {filepath}")
-        return False
     except Exception as e:
         print(f"Error sending object: {e}")
         return False

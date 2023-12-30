@@ -4,10 +4,18 @@ import os
 def receive_object(conn, filename):
     try:
         # Read the size of the object first
-        object_size = int.from_bytes(conn.recv(4), 'big')
+        object_size_bytes = conn.recv(4)
+        if not object_size_bytes:
+            return False
+        object_size = int.from_bytes(object_size_bytes, 'big')
 
         # Read the object data
-        object_data = conn.recv(object_size)
+        object_data = b''
+        while len(object_data) < object_size:
+            more_data = conn.recv(object_size - len(object_data))
+            if not more_data:
+                raise Exception("Connection lost while receiving file data.")
+            object_data += more_data
 
         # Write the received data to a file
         with open(filename, 'wb') as file:
@@ -18,8 +26,8 @@ def receive_object(conn, filename):
         conn.sendall(b"Ack")
     except Exception as e:
         print(f"Error receiving object: {e}")
-        return False  # Indicates an error occurred
-    return True  # Indicates success
+        return False
+    return True
 
 def start_server():
     HOST = "127.0.0.1"
@@ -39,10 +47,8 @@ def start_server():
             print(f"Connected by {addr}")
             for i in range(10):  # Expecting 10 small and 10 large objects
                 if not receive_object(conn, f"{received_dir}/received_small-{i}.obj"):
-                    print("Error in receiving small object. Ending transmission.")
                     break
                 if not receive_object(conn, f"{received_dir}/received_large-{i}.obj"):
-                    print("Error in receiving large object. Ending transmission.")
                     break
             print("Server has finished receiving files.")
 
