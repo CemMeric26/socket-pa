@@ -3,35 +3,35 @@ import os
 import json
 import time
 
-def create_segments(file_path, segment_size):
-    # This function should read the file and create segments
-    # You can use the following snippet to create segments
-    segments = []
-    sequence_number = 0
+def create_segments_for_files(file_paths, segment_size):
+    all_segments = []
+    file_id = 0
 
-    with open(file_path, 'rb') as file: # The function opens the file in binary read mode ('rb')
-        while True:
-            data = file.read(segment_size) # It reads the file in chunks, with each chunk being segment_size bytes.
-            if not data:
-                break
-            # For each chunk, it creates a dictionary (segment) with three keys:
-                #'sequence_number': A unique identifier for each segment.
-                # 'data': The binary data of the segment.
-                # 'is_last_segment': A boolean flag indicating whether this is the last segment of the file.
-            segment = {
-                'sequence_number': sequence_number,
-                'data': data,
-                'is_last_segment': False  # Will be set later
-            }
-            segments.append(segment) # append to the segments list
-            sequence_number += 1  # increment the sequence number
+    for file_path in file_paths:
 
-    # Mark the last segment
-    if segments:
-        segments[-1]['is_last_segment'] = True
+        if not os.path.exists(file_path):
+            print(f"File {file_path} does not exist.")
+            continue
 
-    return segments
+        with open(file_path, 'rb') as file:
+            sequence_number = 0
+            while True:
+                data = file.read(segment_size)
+                if not data:
+                    break
+                segment = {
+                    'file_id': file_id,
+                    'sequence_number': sequence_number,
+                    'data': data,
+                    'is_last_segment': False
+                }
+                all_segments.append(segment)
+                sequence_number += 1
 
+        all_segments[-1]['is_last_segment'] = True
+        file_id += 1
+
+    return all_segments
 
 def send_segment(udp_socket, segment, server_address):
     # Serialize and send a segment
@@ -75,12 +75,14 @@ def start_client(server_ip, server_port):
     server_address = (server_ip, server_port)
     udp_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
 
-    file_path = "path_to_your_file"
+    file_paths = [f"../../objects/large-{i}.obj" for i in range(10)] + \
+                 [f"../../objects/small-{i}.obj" for i in range(10)]
     segment_size = 1024  # Define your segment size
 
     window_size = 10  # Define your window size, must be smaller than segment size
 
-    segments = create_segments(file_path, segment_size)
+    segments = create_segments_for_files(file_paths, segment_size)
+
     sent_segments = set()
 
     for segment in segments:

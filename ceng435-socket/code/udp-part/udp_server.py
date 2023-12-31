@@ -3,22 +3,19 @@ import json
 import os
 
 def process_segment(segment, output_directory):
-    # Process received segment
-    # Extract segment data
-    sequence_number = segment['sequence_number'] # get the value from the segment dictionary
-    data = segment['data']                       # get the value from the segment dictionary
-    is_last_segment = segment['is_last_segment'] # get the value from the segment dictionary
+    file_id = segment['file_id']
+    sequence_number = segment['sequence_number']
+    data = segment['data']
+    is_last_segment = segment['is_last_segment']
 
-    # Define the output file path 
-    output_file_path = os.path.join(output_directory, f"/output_{sequence_number}.obj")
+    output_file_path = os.path.join(output_directory, f"file_{file_id}_{sequence_number}.obj")
 
-    # Write the segment data to the output file
+    print(f"Processed segment from file {file_id}, segment {sequence_number}, Last Segment: {is_last_segment}")
+    
     with open(output_file_path, 'wb') as file:
         file.write(data)
 
-    print(f"Processed segment {sequence_number}, Last Segment: {is_last_segment}")
-
-    return is_last_segment  # Return if the segment is the last segment, this means all segments are received
+    return is_last_segment
 
 def send_ack(udp_socket, client_address, sequence_number):
     # Send acknowledgment for received segment
