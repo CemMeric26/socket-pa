@@ -1,6 +1,6 @@
 import socket
-import json
 import os
+import pickle
 
 def process_segment(segment, output_directory):
     file_id = segment['file_id']
@@ -28,13 +28,20 @@ def send_ack(udp_socket, client_address, sequence_number):
         }
 
         # Serialize the acknowledgment message
-        # seriazlize it to json then encode it to bytes
-        serialized_ack = json.dumps(ack_message).encode('utf-8')
+        # seriazlize it with pickle
+        serialized_ack = pickle.dumps(ack_message)
 
         # Send the acknowledgment back to the client
         udp_socket.sendto(serialized_ack, client_address)
     except Exception as e:
         print(f"Error sending acknowledgment: {e}")
+
+
+def reassemble_file(received_segments, output_directory, file_id):
+    file_path = os.path.join(output_directory, f"reassembled_file_{file_id}.obj")
+    with open(file_path, 'wb') as output_file:
+        for seq_num in sorted(received_segments.keys()):
+            output_file.write(received_segments[seq_num])
 
 def start_server():
     local_ip = "127.0.0.1"
@@ -45,6 +52,7 @@ def start_server():
     print("UDP server up and listening")
 
     received_segments = set()
+    received_files = {}
     output_directory = "./received_files"  # Define the output directory
 
     if not os.path.exists(output_directory):
@@ -52,17 +60,19 @@ def start_server():
 
     while True:
         bytes_address_pair = udp_socket.recvfrom(1024)
-        segment = json.loads(bytes_address_pair[0].decode('utf-8'))
+        segment = pickle.loads(bytes_address_pair[0])  # Deserialize the segment using pickle  
         address = bytes_address_pair[1]
 
         if segment["sequence_number"] not in received_segments:
+            file_id = segment['file_id']
             is_last_segment = process_segment(segment, output_directory)
+            received_files.setdefault(file_id, {})[segment["sequence_number"]] = segment["data"]
             send_ack(udp_socket, address, segment["sequence_number"])
             received_segments.add(segment["sequence_number"])
 
             if is_last_segment:
-                # break the loop if the last segment is received
-                print("Last segment received. Server is closing.")
+                reassemble_file(received_files[file_id], output_directory, file_id)
+                print(f"File {file_id} reassembled and saved.")
                 break
 
     udp_socket.close()

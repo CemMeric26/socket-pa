@@ -1,6 +1,6 @@
 import socket
 import os
-import json
+import pickle
 import time
 
 def create_segments_for_files(file_paths, segment_size):
@@ -36,10 +36,10 @@ def create_segments_for_files(file_paths, segment_size):
 def send_segment(udp_socket, segment, server_address):
     # Serialize and send a segment
     try:
-        #  The segment dictionary is serialized into a JSON string using json.dumps 
+        #  The segment dictionary is serialized with pickle
         # then encoded into bytes. This is necessary 
         # because UDP sendto requires data to be in bytes.
-        serialized_segment = json.dumps(segment).encode('utf-8')         # Serialize the segment into JSON
+        serialized_segment = pickle.dumps(segment)        # Serialize the segment using pickle
      
         # The sendto method of the socket object is used to 
         # send the serialized segment to the specified server_address.
@@ -47,7 +47,7 @@ def send_segment(udp_socket, segment, server_address):
     except Exception as e:
         print(f"Error sending segment: {e}")
 
-def receive_ack(udp_socket, expected_seq_num, timeout=0.8):
+def receive_ack(udp_socket, expected_seq_num, timeout=2):
     # Wait for an acknowledgment
     try:
         # This timeout prevents the client from waiting indefinitely for an acknowledgment.
@@ -57,7 +57,7 @@ def receive_ack(udp_socket, expected_seq_num, timeout=0.8):
         while True:
             # Wait for a response from the server
             ack_data, _ = udp_socket.recvfrom(1024) # The recvfrom method of the socket object is used to receive data from the server.
-            ack = json.loads(ack_data.decode('utf-8'))      # it deserializes the JSON data to get the acknowledgment details.
+            ack = pickle.loads(ack_data)      # it deserializes thepickle to get the acknowledgment details.
 
             # Check if the acknowledgment is for the expected segment
             if ack.get('sequence_number') == expected_seq_num:
