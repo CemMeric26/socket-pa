@@ -3,6 +3,10 @@ import os
 import pickle
 
 def process_segment(segment, received_files):
+    """
+    Processes a received segment. store the segment data in the received_files 
+    determine if the segment is the last one for its file.
+    """
     file_id = segment['file_id']
     sequence_number = segment['sequence_number']
     data = segment['data']
@@ -14,7 +18,7 @@ def process_segment(segment, received_files):
     return is_last_segment
 
 def send_ack(udp_socket, client_address, sequence_number):
-    # Send acknowledgment for received segment
+    # Send ack back to the client for a received segment.
     try:
         # Create an acknowledgment message
         # The function creates a dictionary ack_message with the sequence number 
@@ -34,6 +38,9 @@ def send_ack(udp_socket, client_address, sequence_number):
 
 
 def reassemble_file(received_files, output_directory, file_id):
+    """
+    Reassemble and save the file from its segments after everything is received.
+    """
     # Determine file type based on file_id
     file_type = "small" if file_id < 10 else "large"
     
@@ -67,9 +74,11 @@ def start_server():
         segment = pickle.loads(bytes_address_pair[0])  # Deserialize the segment using pickle  
         address = bytes_address_pair[1]
 
+        # process the segment and send ack
         is_last_segment = process_segment(segment, received_files)
         send_ack(udp_socket, address, segment["sequence_number"])
 
+        # If the segment is the last one for its file, reassemble and save the file
         if is_last_segment:
             reassemble_file(received_files, output_directory, segment['file_id'])
             print(f"File {segment['file_id']} reassembled and saved.")
