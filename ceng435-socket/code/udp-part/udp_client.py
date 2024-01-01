@@ -48,26 +48,20 @@ def send_segment(udp_socket, segment, server_address):
         print(f"Error sending segment: {e}")
 
 def receive_ack(udp_socket, expected_seq_num, timeout=2):
-    # Wait for an acknowledgment
     try:
-        # This timeout prevents the client from waiting indefinitely for an acknowledgment.
-        # If the timeout is reached, a socket.timeout exception is raised
-        udp_socket.settimeout(timeout)        # Set a timeout for the socket to wait for an acknowledgment
-
+        udp_socket.settimeout(timeout)
         while True:
-            # Wait for a response from the server
-            ack_data, _ = udp_socket.recvfrom(1024) # The recvfrom method of the socket object is used to receive data from the server.
-            ack = pickle.loads(ack_data)      # it deserializes thepickle to get the acknowledgment details.
-
+            ack_data, _ = udp_socket.recvfrom(1024)  # Consider increasing buffer size if needed
+            ack = pickle.loads(ack_data)
+            
             # Check if the acknowledgment is for the expected segment
-            if ack.get('sequence_number') == expected_seq_num:
-                return ack  # Return the acknowledgment
-
+            if ack.get('acknowledged_sequence_number') == expected_seq_num:
+                print(f"Acknowledgment received for segment {expected_seq_num}")
+                return ack
     except socket.timeout:
         print(f"No acknowledgment received for segment {expected_seq_num}.")
         return None
-    except Exception as e:  # if no acknowledgment is received, the client prints None
-        # but we should send the segment again i think for the data integrity
+    except Exception as e:
         print(f"Error in receiving acknowledgment: {e}")
         return None
 
@@ -75,8 +69,9 @@ def start_client(server_ip, server_port):
     server_address = (server_ip, server_port)
     udp_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
 
-    file_paths = [f"../../objects/large-{i}.obj" for i in range(10)] + \
-                 [f"../../objects/small-{i}.obj" for i in range(10)]
+    file_paths = [f"../../objects/small-{i}.obj" for i in range(10)] + \
+                    [f"../../objects/large-{i}.obj" for i in range(10)] 
+                 
     segment_size = 1024  # Define your segment size
 
     window_size = 10  # Define your window size, must be smaller than segment size
