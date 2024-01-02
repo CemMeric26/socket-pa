@@ -1,6 +1,10 @@
 import socket
 import os
 import pickle
+import threading
+import logging
+
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def process_segment(segment, received_files):
     """
@@ -14,6 +18,9 @@ def process_segment(segment, received_files):
 
     # Store the segment data in the received_files dictionary
     received_files.setdefault(file_id, {})[sequence_number] = data
+
+    logging.info(f"Received segment {segment['sequence_number']} from file {segment['file_id']}")
+
 
     return is_last_segment
 
@@ -33,6 +40,7 @@ def send_ack(udp_socket, client_address, sequence_number):
 
         # Send the acknowledgment back to the client
         udp_socket.sendto(serialized_ack, client_address)
+        logging.info(f"Sending ACK for segment {sequence_number}")
     except Exception as e:
         print(f"Error sending acknowledgment: {e}")
 
@@ -63,7 +71,9 @@ def start_server():
 
 
     received_files = {} # Dictionary to store received segments
+    received_ack = set() # Set to keep track of received acknowledgments
     output_directory = "./received_files"  # Define the output directory
+    lock = threading.Lock() # Lock to synchronize access to received_files
 
     if not os.path.exists(output_directory):
         os.makedirs(output_directory)
@@ -74,14 +84,25 @@ def start_server():
         segment = pickle.loads(bytes_address_pair[0])  # Deserialize the segment using pickle  
         address = bytes_address_pair[1]
 
-        # process the segment and send ack
-        is_last_segment = process_segment(segment, received_files)
-        send_ack(udp_socket, address, segment["sequence_number"])
+        sequence_number = segment['sequence_number']
 
-        # If the segment is the last one for its file, reassemble and save the file
-        if is_last_segment:
-            reassemble_file(received_files, output_directory, segment['file_id'])
-            print(f"File {segment['file_id']} reassembled and saved.")
+        # Lock access to received_files as it might be accessed from multiple threads
+        with lock:
+            # Process the segment and always send an ACK back
+            is_last_segment = process_segment(segment, received_files)
+            send_ack(udp_socket, address, sequence_number)
+
+            # Add the sequence number to the received acknowledgments
+            received_ack.add(sequence_number)
+
+            # If the segment is the last one for its file, attempt to reassemble the file
+            if is_last_segment:
+                # Check if all previous segments have been received
+                all_segments_received = all(seq_num in received_ack for seq_num in range(sequence_number + 1))
+                if all_segments_received:
+                    reassemble_file(received_files, output_directory, segment['file_id'])
+                    print(f"File {segment['file_id']} reassembled and saved.")
+
 
     udp_socket.close()
 
