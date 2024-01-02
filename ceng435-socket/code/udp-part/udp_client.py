@@ -5,10 +5,12 @@ import time
 from threading import Thread, Lock
 import logging
 import hashlib
+from concurrent.futures import ThreadPoolExecutor
 
 # Setup basic logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
+MAX_SEQUENCE_NUMBER = 65535 # Maximum sequence number
 
 def create_segments_for_files(file_paths, segment_size):
     """
@@ -45,6 +47,10 @@ def create_segments_for_files(file_paths, segment_size):
                 all_segments.append(segment)
                 sequence_number += 1
 
+            # Wrap around the sequence number
+                if sequence_number > MAX_SEQUENCE_NUMBER:
+                    sequence_number = 0
+
         # set the last segment flag to true
         all_segments[-1]['is_last_segment'] = True
         file_id += 1
@@ -63,13 +69,12 @@ def send_segment(udp_socket, segment, server_address):
     except Exception as e:
         print(f"Error sending segment: {e}")
 
-def send_segment_with_timeout(udp_socket, segment, server_address, acked_segments, send_lock):
+def send_segment_with_timeout(executor, udp_socket, segment, server_address, acked_segments, send_lock):
     # Send a segment and start its timeout timer
+    logging.debug(f"Preparing to send segment with timeout: {segment['sequence_number']}")
     with send_lock:
         send_segment(udp_socket, segment, server_address)
-    timer_thread = Thread(target=handle_timeout, args=(udp_socket, segment, server_address, acked_segments, send_lock))
-    timer_thread.daemon = True
-    timer_thread.start()
+    executor.submit(handle_timeout, udp_socket, segment, server_address, acked_segments, send_lock)
 
 def receive_ack(udp_socket, expected_seq_num, timeout=2):
     # this function waits for an ack for the segment from the server
@@ -115,10 +120,11 @@ def send_and_wait_for_ack(udp_socket, segment, server_address, acked_segments, s
 
 
 def handle_timeout(udp_socket, segment, server_address, acked_segments, send_lock):
+    logging.debug(f"Starting timeout handler for segment {segment['sequence_number']}")
     time.sleep(1)  # Wait for a timeout before resending
     with send_lock:
         if segment['sequence_number'] not in acked_segments:
-            logging.debug(f"Timeout occurred for segment {segment['sequence_number']}")
+            logging.warning(f"Timeout for segment {segment['sequence_number']}. Resending.")
             send_segment(udp_socket, segment, server_address)
             logging.info(f"Resending segment {segment['sequence_number']} due to timeout")
 
@@ -132,7 +138,7 @@ def start_client(server_ip, server_port, window_size=10):
     udp_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
 
     # defining the file amount
-    FILE_COUNT = 3
+    FILE_COUNT = 10
 
     file_paths = [f"../../objects/small-{i}.obj" for i in range(FILE_COUNT)] + \
                     [f"../../objects/large-{i}.obj" for i in range(FILE_COUNT)] 
@@ -153,24 +159,23 @@ def start_client(server_ip, server_port, window_size=10):
     ack_thread.daemon = True  # Daemonize the thread so it dies when the main thread dies
     ack_thread.start()
 
-    # Loop through all segments and send them according to the Selective Repeat logic
-    for segment in segments:
-        with base['lock']:
-            # Check if the segment is within the sending window
-            while segment['sequence_number'] >= base['value'] + window_size:
-                # If the window is full, wait for an ack to slide the window
-                time.sleep(0.2)
+    # Create a ThreadPoolExecutor for managing timeout threads
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        for segment in segments:
+            with base['lock']:
+                # Check if the segment is within the sending window
+                while segment['sequence_number'] >= base['value'] + window_size:
+                    # If the window is full, wait for an ack to slide the window
+                    time.sleep(0.2)
 
-        # Send the segment and start the timeout process
-        send_segment_with_timeout(udp_socket, segment, server_address, acked_segments, send_lock)
+            # Send the segment and handle the timeout with the executor
+            send_segment_with_timeout(executor, udp_socket, segment, server_address, acked_segments, send_lock)
 
-        # Send the segment and handle timeout if not acknowledged
-        with send_lock:
-            sent_segments.add(segment['sequence_number'])
+            # Wait a short time before attempting to send the next segment
+            time.sleep(0.1)
 
-        # Wait a short time before attempting to send the next segment
-        time.sleep(0.1)
-
+        # Wait for all futures (i.e., timeout handlers) to complete
+        executor.shutdown(wait=True)
     # Wait for all segments to be acknowledged before closing
     while len(acked_segments) < len(segments):
         time.sleep(0.2)

@@ -6,6 +6,9 @@ import logging
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
+MAX_SEQUENCE_NUMBER = 65535  # Define the maximum sequence number
+
+
 def process_segment(segment, received_files):
     """
     Processes a received segment. store the segment data in the received_files 
@@ -92,13 +95,19 @@ def start_server():
             is_last_segment = process_segment(segment, received_files)
             send_ack(udp_socket, address, sequence_number)
 
+            # Handle wrap-around in sequence numbers
+            adjusted_sequence_number = sequence_number % (MAX_SEQUENCE_NUMBER + 1)
+
             # Add the sequence number to the received acknowledgments
-            received_ack.add(sequence_number)
+            received_ack.add(adjusted_sequence_number)
 
             # If the segment is the last one for its file, attempt to reassemble the file
             if is_last_segment:
                 # Check if all previous segments have been received
-                all_segments_received = all(seq_num in received_ack for seq_num in range(sequence_number + 1))
+                all_segments_received = all(
+                    seq_num % (MAX_SEQUENCE_NUMBER + 1) in received_ack 
+                    for seq_num in range(sequence_number + 1)
+                )
                 if all_segments_received:
                     reassemble_file(received_files, output_directory, segment['file_id'])
                     print(f"File {segment['file_id']} reassembled and saved.")
