@@ -144,7 +144,7 @@ def GBN_receiver(udp_socket):
 
     while True:
         # segment = receive_segment(udp_socket)
-        buffer_size = 10240
+        buffer_size = 1024000
         bytes_address_pair = udp_socket.recvfrom(buffer_size)
         segment = pickle.loads(bytes_address_pair[0])  # Deserialize the segment using pickle  
         address = bytes_address_pair[1]
