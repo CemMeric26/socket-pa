@@ -27,6 +27,7 @@ def send_ack(udp_socket, client_address, sequence_number):
 
         # Send the acknowledgment back to the client
         udp_socket.sendto(serialized_ack, client_address)
+        print(f"Acknowledgment sent for segment {sequence_number}")
     except Exception as e:
         print(f"Error sending acknowledgment: {e}")
 
@@ -84,7 +85,7 @@ def reassemble_file(received_files, output_directory, file_id, total_files):
 
 
 def start_server():
-    local_ip = "127.0.0.1"
+    local_ip = "server"
     local_port = 8000
     udp_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
     udp_socket.bind((local_ip, local_port))

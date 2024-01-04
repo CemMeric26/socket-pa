@@ -57,7 +57,7 @@ def receive_ack(udp_socket, expected_seq_num, timeout=2):
             
             # Check if the acknowledgment is for the expected segment
             if ack.get('acknowledged_sequence_number') == expected_seq_num:
-                # print(f"Acknowledgment received for segment {expected_seq_num}")
+                print(f"Acknowledgment received for segment {expected_seq_num}")
                 return ack
     except socket.timeout:
         print(f"No acknowledgment received for segment {expected_seq_num}.")
@@ -129,10 +129,13 @@ def start_client(server_ip, server_port, window_size=10):
     
     interleaved_segments = interleave_segments(each_segments)
 
-    print(len(interleaved_segments))
-    
+    # print(len(interleaved_segments))
+
+
+    start_time = time.time()  # Start time
     for segment in interleaved_segments:
         # print(f"Sending segment {segment['file_id']}-{segment['sequence_number']}")
+        
         # wait if the number of unacknowledged segments is equal to the window size
         while len(sent_segments) - len(acked_segments) >= window_size:
             time.sleep(0.1)  # Wait before sending more segments
@@ -141,8 +144,12 @@ def start_client(server_ip, server_port, window_size=10):
         sent_segments.add(segment["sequence_number"])
         acked_segments.add(segment["sequence_number"]) # when ack is received, add it to acked_segments
 
-
+    end_time = time.time()  # End time
+    elapsed_time = end_time - start_time
+    print(f"Total time taken for file transfer: {elapsed_time} seconds")
+    print(f"Average throughput: {FILE_COUNT * segment_size * 8 / elapsed_time} bits per second")
+    
     udp_socket.close()
 
 if __name__ == "__main__":
-    start_client("127.0.0.1", 8000)
+    start_client("server", 8000)
