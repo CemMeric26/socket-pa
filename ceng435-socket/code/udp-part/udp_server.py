@@ -2,7 +2,8 @@ import socket
 import os
 import pickle
 import hashlib
-import json
+from common import WINDOW_SIZE, TIMEOUT_DURATION, TIMEOUT_SLEEP
+
 
 def process_segment(segment, received_segments):
     file_id = segment['file_id']
@@ -144,7 +145,7 @@ def GBN_receiver(udp_socket):
 
     while True:
         # segment = receive_segment(udp_socket)
-        buffer_size = 1024000
+        buffer_size = 1024*10*WINDOW_SIZE
         bytes_address_pair = udp_socket.recvfrom(buffer_size)
         segment = pickle.loads(bytes_address_pair[0])  # Deserialize the segment using pickle  
         address = bytes_address_pair[1]
@@ -184,24 +185,7 @@ def start_server():
     GBN_receiver(udp_socket)
 
     udp_socket.close()
-    """
 
-    while True:
-        buffer_size = 4096
-        bytes_address_pair = udp_socket.recvfrom(buffer_size)
-        segment = pickle.loads(bytes_address_pair[0])  # Deserialize the segment using pickle  
-        address = bytes_address_pair[1]
-
-        # process the segment and send ack
-        is_last_segment = process_segment(segment, received_segments)
-        send_ack(udp_socket, address, segment["sequence_number"])
-
-        # If the segment is the last one for its file, reassemble and save the file
-        if is_last_segment:
-            # here reassemble the file and save it
-            reassemble_file(received_segments, output_directory, segment['file_id'],20)
-            print(f"File {segment['file_id']} reassembled and saved.")
-    """
 
 if __name__ == "__main__":
     start_server()
