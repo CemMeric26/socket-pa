@@ -58,43 +58,6 @@ def create_segment_for_file(file_path, segment_size,file_id):
 
     return all_segments
 
-def send_segment(udp_socket, segment, server_address):
-    # Serialize and send a segment over UDP
-    try:
-        #  The segment dictionary is serialized with pickle
-        serialized_segment = pickle.dumps(segment)        # Serialize the segment using pickle
-     
-        # The sendto method of the socket
-        udp_socket.sendto(serialized_segment, server_address)           # Send the serialized segment to the server
-    except Exception as e:
-        print(f"Error sending segment: {e}")
-
-def receive_ack(udp_socket, expected_seq_num):
-    # this function waits for an ack for the segment from the server
-    # ack is expected for a specific segment
-    try:
-        while True:
-            ack_data, _ = udp_socket.recvfrom(1024)  # buffer size
-            ack = pickle.loads(ack_data)         
-            # Check if the acknowledgment is for the expected segment
-            if ack.get('acknowledged_sequence_number') == expected_seq_num:
-                print(f"Acknowledgment received for segment {expected_seq_num}")
-                return ack
-    except Exception as e:
-        print(f"Error in receiving acknowledgment: {e}")
-        return None
-    
-def send_and_wait_for_ack(udp_socket, segment, server_address, timeout=2):
-    # this function sends the segment to the server
-    # and waits for the ack, resends the segment if ack is not received
-    while True:
-        send_segment(udp_socket, segment, server_address)
-        ack = receive_ack(udp_socket, segment['sequence_number'], timeout)
-        if ack is not None:
-            break  # Ack received, break out of the loop
-        print(f"Resending segment {segment['sequence_number']}")
-
-
 def interleave_segments(segments):
     # this function interleaves the segments
     interleaved_segments = []
@@ -111,6 +74,36 @@ def interleave_segments(segments):
 
     return interleaved_segments
 
+def send_segment(udp_socket, segment, server_address):
+    # Serialize and send a segment over UDP
+    try:
+        #  The segment dictionary is serialized with pickle
+        serialized_segment = pickle.dumps(segment)        # Serialize the segment using pickle
+     
+        # The sendto method of the socket
+        udp_socket.sendto(serialized_segment, server_address)           # Send the serialized segment to the server
+    except Exception as e:
+        print(f"Error sending segment: {e}")
+
+def receive_ack(udp_socket, timeout=1):
+    """
+    Wait for an ACK from the server for a specific segment with a specified timeout.
+    If the expected ACK is received, it returns the ACK.
+    If an unexpected ACK is received, or a timeout occurs, it returns None.
+    """
+    try:
+
+        # Try to receive an ACK
+        ack_data, _ = udp_socket.recvfrom(1024)  # buffer size
+        ack = pickle.loads(ack_data)
+
+        # Check if the ACK      
+     
+        return ack
+    except Exception as e:
+        print(f"Error in receiving acknowledgment: {e}")
+        return None
+
 def GBN_sender(udp_socket,server_address, base, next_seq_num, N, interleaved_segments, timer_start_time, timeout_duration):
     
     sent_segments = set()
@@ -118,12 +111,13 @@ def GBN_sender(udp_socket,server_address, base, next_seq_num, N, interleaved_seg
     timer_start_time = None  # Initialize the timer to None
 
     while base < len(interleaved_segments):
+        
         # Send segments that are within the window
         # print(f"Acknowledgment received for segment {acked_seq_num}")
         while next_seq_num < base + N and next_seq_num <= len(interleaved_segments):
-            segment = interleaved_segments[next_seq_num ]  # sequence numbers are 1-indexed
+            segment = interleaved_segments[next_seq_num]  # sequence numbers are 1-indexed
             send_segment(udp_socket, segment, server_address)
-            sent_segments.add(segment["sequence_number"])
+            # sent_segments.add(segment["sequence_number"])
 
             # print(f"Sending segment {seq_num}, Timer: {time.time() - timer_start_time:.2f}")
             print(f"Current window: [{base}, {base + N - 1}]")
@@ -137,33 +131,23 @@ def GBN_sender(udp_socket,server_address, base, next_seq_num, N, interleaved_seg
         # Check for ACKs
         ack = receive_ack(udp_socket, base)
         if ack is not None:
-            acked_seq_num = ack['acknowledged_sequence_number']
-            if acked_seq_num in sent_segments:
-                print(f"Received ACK for segment {acked_seq_num}")
-                acked_segments.add(acked_seq_num)
-                if acked_seq_num >= base:
-                    # Move the base up to the next unacknowledged segment
-                    while base in acked_segments:
-                        base += 1
-                        acked_segments.remove(base-1)
-                        # Restart timer upon receiving an ACK for the base segment
-                    
-                    timer_start_time = time.time()
-        
+            base = ack['acknowledged_sequence_number'] + 1
+            #next_seq_num = base+N
+            if base == next_seq_num:
+                # Stop the timer if all segments have been acknowledged
+                timer_start_time = None  # Stop the timer
+            else:
+                # Restart timer for the oldest unacknowledged packet
+                timer_start_time = time.time()
+
         # Check for timeout
         print(f"Timer timeout time: {time.time()-timer_start_time}")
-
-        if timer_start_time and ((time.time() - timer_start_time) > timeout_duration):
+        #
+        if ((time.time() - timer_start_time) >= timeout_duration):
             print(f"Timeout for segment {base}, resending...")
             next_seq_num = base
-
-            timer_start_time = time.time()  # Restart timer for the oldest unacknowledged packet
-
-            # Resend all segments starting from 'base' up to 'next_seq_num'
-            for seq_num in range(base, min(base + N, len(interleaved_segments))):
-                segment = interleaved_segments[seq_num]
-                send_segment(udp_socket, segment, server_address)
-                print(f"Resent segment {segment['sequence_number']}")
+            timer_start_time = None  # Stop the timer
+            #timer_start_time = time.time()  # Restart timer for the oldest unacknowledged packet    
 
             # timer_start_time = time.time()  # Restart timer for the oldest unacknowledged packet
             # Resend all segments starting from 'base' up to 'next_seq_num - 1'
@@ -250,6 +234,10 @@ def start_client(server_ip, server_port, window_size=100):
 
 
 if __name__ == "__main__":
-    # IP = "127.0.0.1"
-    IP = "server"
+    IP = "127.0.0.1"
+    # IP = "server"
     start_client(IP, 8000)
+
+
+# tc qdisc add dev eth0 root netem delay 100ms 50ms
+# tc qdisc del dev eth0 root

@@ -2,6 +2,7 @@ import socket
 import os
 import pickle
 import hashlib
+import json
 
 def process_segment(segment, received_segments):
     file_id = segment['file_id']
@@ -11,19 +12,16 @@ def process_segment(segment, received_segments):
 
     return segment['is_last_segment']
 
-def send_ack(udp_socket, client_address, sequence_number,checksum):
+def send_ack(udp_socket, client_address, sequence_number, checksum):
     # Send ack back to the client for a received segment.
     try:
         # Create an acknowledgment message
-        # The function creates a dictionary ack_message with the sequence number 
-        # that was successfully received
         ack_message = {
             'acknowledged_sequence_number': sequence_number,
             'checksum': checksum
         }
 
-        # Serialize the acknowledgment message
-        # seriazlize it with pickle
+        # Serialize the acknowledgment message using pickle
         serialized_ack = pickle.dumps(ack_message)
 
         # Send the acknowledgment back to the client
@@ -78,6 +76,7 @@ def calculate_checksum(data):
     
     # Return the hex digest of the data
     return hash_obj.hexdigest()
+
 def receive_segment(udp_socket):
     # Receive a segment over UDP and return the deserialized segment.
     try:
@@ -149,19 +148,20 @@ def GBN_receiver(udp_socket):
         bytes_address_pair = udp_socket.recvfrom(buffer_size)
         segment = pickle.loads(bytes_address_pair[0])  # Deserialize the segment using pickle  
         address = bytes_address_pair[1]
-      
+        
 
         if segment and is_not_corrupt(segment):
             # checksum = calculate_checksum(segment['sequence_number'])  # Replace with actual method to compute checksum
-            checksum = ""
-
-            send_ack(udp_socket, address,segment['sequence_number'], checksum)
+            checksum = "" 
             if  has_sequence_number(segment, expected_seq_num):
                 print(f"Segment {segment['sequence_number']} received.")
+                send_ack(udp_socket, address,expected_seq_num, checksum)
                 expected_seq_num += 1  # Increment the expected sequence number
             else:
                 print(f"Out-of-order segment received. Expected: {expected_seq_num}, got: {segment['sequence_number']}")
+                send_ack(udp_socket, address, expected_seq_num, checksum)
              # process the segment and send ack
+            
             is_last_segment = process_segment(segment, received_segments)
             if is_last_segment:
                 # here reassemble the file and save it
@@ -173,8 +173,8 @@ def GBN_receiver(udp_socket):
 
 
 def start_server():
-    local_ip = "server"
-    # local_ip = "127.0.0.1"
+    # local_ip = "server"
+    local_ip = "127.0.0.1"
     local_port = 8000
     udp_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
     udp_socket.bind((local_ip, local_port))
