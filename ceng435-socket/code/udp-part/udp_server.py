@@ -173,8 +173,8 @@ def GBN_receiver(udp_socket):
 
 
 def start_server():
-    # local_ip = "server"
-    local_ip = "127.0.0.1"
+    local_ip = "server"
+    # local_ip = "127.0.0.1"
     local_port = 8000
     udp_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
     udp_socket.bind((local_ip, local_port))

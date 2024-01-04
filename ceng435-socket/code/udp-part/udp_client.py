@@ -104,61 +104,52 @@ def receive_ack(udp_socket, timeout=1):
         print(f"Error in receiving acknowledgment: {e}")
         return None
 
+def is_not_corrupt(segment):
+    return True
+
+def has_sequence_number(segment, expected_seq_num):
+    return segment['sequence_number'] == expected_seq_num
+
 def GBN_sender(udp_socket,server_address, base, next_seq_num, N, interleaved_segments, timer_start_time, timeout_duration):
     
-    sent_segments = set()
-    acked_segments = set()
-    timer_start_time = None  # Initialize the timer to None
+    # 4 states there is 
+    # rdt send data
+    # timeout
+    # rdt receive ack and not corrupted
+    # rdt receive ack and corrupted
 
-    while base < len(interleaved_segments):
-        
-        # Send segments that are within the window
-        # print(f"Acknowledgment received for segment {acked_seq_num}")
-        while next_seq_num < base + N and next_seq_num <= len(interleaved_segments):
-            segment = interleaved_segments[next_seq_num]  # sequence numbers are 1-indexed
-            send_segment(udp_socket, segment, server_address)
-            # sent_segments.add(segment["sequence_number"])
+    timer_start_time = None
 
-            # print(f"Sending segment {seq_num}, Timer: {time.time() - timer_start_time:.2f}")
-            print(f"Current window: [{base}, {base + N - 1}]")
-            print(f"Sent segment {segment['sequence_number']}")
+    while(base < len(interleaved_segments)):
 
-            if base == next_seq_num:
-                # Start timer upon sending the first segment in the window
+        if(next_seq_num < base + N):
+            # print(next_seq_num)
+            send_segment(udp_socket, interleaved_segments[next_seq_num], server_address)
+            if(base == next_seq_num):
                 timer_start_time = time.time()
             next_seq_num += 1
+        else:
+            # refuse data
+            pass
 
-        # Check for ACKs
-        ack = receive_ack(udp_socket, base)
-        if ack is not None:
+        ack = receive_ack(udp_socket)
+        if(ack != None and is_not_corrupt(ack)):
             base = ack['acknowledged_sequence_number'] + 1
-            #next_seq_num = base+N
-            if base == next_seq_num:
-                # Stop the timer if all segments have been acknowledged
-                timer_start_time = None  # Stop the timer
+            if(base == next_seq_num):
+                timer_start_time = None
             else:
-                # Restart timer for the oldest unacknowledged packet
                 timer_start_time = time.time()
 
-        # Check for timeout
-        print(f"Timer timeout time: {time.time()-timer_start_time}")
-        #
-        if ((time.time() - timer_start_time) >= timeout_duration):
-            print(f"Timeout for segment {base}, resending...")
-            next_seq_num = base
-            timer_start_time = None  # Stop the timer
-            #timer_start_time = time.time()  # Restart timer for the oldest unacknowledged packet    
+        if(timer_start_time != None and time.time() - timer_start_time > timeout_duration):
+            timer_start_time = time.time()
 
-            # timer_start_time = time.time()  # Restart timer for the oldest unacknowledged packet
-            # Resend all segments starting from 'base' up to 'next_seq_num - 1'
-            """
-            for seq_num in range(base, next_seq_num):
-                segment = interleaved_segments[seq_num]  # sequence numbers are 1-indexed
-                send_segment(udp_socket, segment, server_address)
-                """
+            for i in range(base, next_seq_num):
+                send_segment(udp_socket, interleaved_segments[i], server_address)
+
+    print("All segments are sent")
 
 
-    print("All segments have been acknowledged.")
+        
 
         
 
@@ -234,8 +225,8 @@ def start_client(server_ip, server_port, window_size=100):
 
 
 if __name__ == "__main__":
-    IP = "127.0.0.1"
-    # IP = "server"
+    # IP = "127.0.0.1"
+    IP = "server"
     start_client(IP, 8000)
 
 
