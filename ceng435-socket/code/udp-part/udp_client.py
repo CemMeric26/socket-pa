@@ -3,6 +3,8 @@ import os
 import pickle
 import time
 import hashlib
+from common import WINDOW_SIZE, TIMEOUT_DURATION, TIMEOUT_SLEEP
+
 
 def calculate_checksum(data):
     # Convert data to bytes if it is not already a bytes-like object
@@ -86,7 +88,7 @@ def send_segment(udp_socket, segment, server_address):
     except Exception as e:
         print(f"Error sending segment: {e}")
 
-def receive_ack(udp_socket, timeout=0.5):
+def receive_ack(udp_socket, timeout=TIMEOUT_SLEEP):
     """
     Wait for an ACK from the server for a specific segment with a specified timeout.
     If the expected ACK is received, it returns the ACK.
@@ -124,16 +126,19 @@ def GBN_sender(udp_socket,server_address, base, next_seq_num, N, interleaved_seg
     # timeout
     # rdt receive ack and not corrupted
     # rdt receive ack and corrupted
-
     timer_start_time = None
 
     while(base < len(interleaved_segments)):
 
         if(next_seq_num < base + N):
             # print(next_seq_num)
+            if(next_seq_num == len(interleaved_segments)):
+                break
             send_segment(udp_socket, interleaved_segments[next_seq_num], server_address)
     
             if(base == next_seq_num):
+                timer_start_time = time.time()
+            else:
                 timer_start_time = time.time()
             next_seq_num += 1
         else:
@@ -147,7 +152,7 @@ def GBN_sender(udp_socket,server_address, base, next_seq_num, N, interleaved_seg
                 timer_start_time = None
             else:
                 timer_start_time = time.time()
-
+        
         if(timer_start_time != None and time.time() - timer_start_time > timeout_duration):
             timer_start_time = time.time()
 
@@ -155,12 +160,9 @@ def GBN_sender(udp_socket,server_address, base, next_seq_num, N, interleaved_seg
                 print(f"Segment resending segment...")
                 send_segment(udp_socket, interleaved_segments[i], server_address)
 
+        
     print("All segments are sent")
 
-
-        
-
-        
 
 def start_client(server_ip, server_port, window_size=100):
     # main function for the client
@@ -183,10 +185,7 @@ def start_client(server_ip, server_port, window_size=100):
                
     segment_size = 10 * 1024  # Defining the segment size
 
-    window_size = 100  # Defining the window size, must be smaller than segment size
-
-    sent_segments = set()
-    acked_segments = set()
+    window_size = WINDOW_SIZE # Defining the window size, must be smaller than segment size
 
     each_segments = []
     i = 0
@@ -204,7 +203,7 @@ def start_client(server_ip, server_port, window_size=100):
 
     # Start timer for the oldest unacknowledged packet
     timer_start_time = None
-    timeout_duration = 0.5  # Duration after which to consider a timeout has occurred
+    timeout_duration = TIMEOUT_DURATION # Duration after which to consider a timeout has occurred
 
     start_time = time.time()
 
@@ -218,19 +217,6 @@ def start_client(server_ip, server_port, window_size=100):
 
 
     udp_socket.close()
-"""
-    for segment in interleaved_segments:
-        # print(f"Sending segment {segment['file_id']}-{segment['sequence_number']}")
-        
-        # wait if the number of unacknowledged segments is equal to the window size
-        while len(sent_segments) - len(acked_segments) >= window_size:
-            time.sleep(0.1)  # Wait before sending more segments
-
-        send_and_wait_for_ack(udp_socket, segment, server_address)
-        sent_segments.add(segment["sequence_number"])
-        acked_segments.add(segment["sequence_number"]) # when ack is received, add it to acked_segments
-
-"""
 
 
 if __name__ == "__main__":
@@ -240,4 +226,5 @@ if __name__ == "__main__":
 
 
 # tc qdisc add dev eth0 root netem delay 100ms 50ms
+# tc qdisc add dev eth0 root netem loss 5%
 # tc qdisc del dev eth0 root
