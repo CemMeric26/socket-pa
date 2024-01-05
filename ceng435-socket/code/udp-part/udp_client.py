@@ -132,6 +132,8 @@ def GBN_sender(udp_socket,server_address, base, next_seq_num, N, interleaved_seg
 
         if(next_seq_num < base + N):
             # print(next_seq_num)
+            if(next_seq_num == len(interleaved_segments)):
+                break
             send_segment(udp_socket, interleaved_segments[next_seq_num], server_address)
     
             if(base == next_seq_num):
