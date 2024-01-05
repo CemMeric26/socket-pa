@@ -12,6 +12,3 @@ docker exec -it server /bin/bash
 
 # Execute a shell on the client container
 docker exec -it client /bin/bash
-
-# If you want to keep the shell open on the server, remove the '&' from the previous command.
-# If you want to keep the shell open on the client, comment out the server /bin/bash command and remove '&' from the client command.
