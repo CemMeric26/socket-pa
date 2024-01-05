@@ -3,6 +3,10 @@ import os
 
 # Function to receive a file object from the connection
 def receive_object(conn, filename):
+    """
+        this is the part we receive the objects from the client with tcp
+        In here like the sender part we just receive the size of the object first and then we receive the object itself
+        """
     try:
         # Receive the first 4 bytes, which indicate the size of the incoming file
         object_size_bytes = conn.recv(4)
@@ -32,8 +36,8 @@ def receive_object(conn, filename):
     return True   # Return True if the file is received successfully
 
 def start_server():
-    HOST = "server"
-    #HOST = "127.0.0.1"
+    # HOST = "server"
+    HOST = "127.0.0.1"
     PORT = 8000
 
     # Create a directory to save received files
@@ -57,6 +61,7 @@ def start_server():
                 if not receive_object(conn, f"{received_dir}/received_large-{i}.obj"):
                     break # Break if an error occurs
             print("Server has finished receiving files.")
+
 
 if __name__ == "__main__":
     start_server()

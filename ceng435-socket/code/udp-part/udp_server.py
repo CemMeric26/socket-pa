@@ -6,6 +6,10 @@ from common import WINDOW_SIZE, TIMEOUT_DURATION, TIMEOUT_SLEEP
 
 
 def process_segment(segment, received_segments):
+    """
+        Process a received segment. and save it to the received_segments dictionary, 
+        finally return the is_last_segment flag which will use decide whether to reassemble the file or not
+    """
     file_id = segment['file_id']
     if file_id not in received_segments:
         received_segments[file_id] = {}
@@ -14,7 +18,11 @@ def process_segment(segment, received_segments):
     return segment['is_last_segment']
 
 def send_ack(udp_socket, client_address, sequence_number, checksum):
-    # Send ack back to the client for a received segment.
+    """ 
+        Send ack back to the client for a received segment. checksum is not used because we are using UDP
+        we are using again the pickle to serialize the ack message, we creating the ack message with
+        the sequence number of received segment 
+    """
     try:
         # Create an acknowledgment message
         ack_message = {
@@ -33,7 +41,7 @@ def send_ack(udp_socket, client_address, sequence_number, checksum):
 
 def verify_checksum(file_path, file_type, file_number):
     """
-    Compute and verify the MD5 checksum of the given file.
+    Compute and verify the MD5 checksum of the given file. It is used to verify the integrity of the received files.
     """
     # Read the expected checksum from the corresponding .md5 file
     with open(f"../../objects/{file_type}-{file_number}.obj.md5", 'r') as file:
@@ -58,6 +66,9 @@ def verify_checksum(file_path, file_type, file_number):
     return our_checksum == expected_checksum
 
 def calculate_checksum(data):
+    """
+    DISCARD: not used
+    """
     # Convert data to bytes if it is not already a bytes-like object
     if isinstance(data, str):
         # If it's a string, encode it to bytes
@@ -79,6 +90,10 @@ def calculate_checksum(data):
     return hash_obj.hexdigest()
 
 def receive_segment(udp_socket):
+
+    """
+        DISCARD: we dont use this function instead we are doing this inside of the while loop in gbn_receiver
+    """
     # Receive a segment over UDP and return the deserialized segment.
     try:
         # The recvfrom method of the socket
@@ -97,7 +112,7 @@ def receive_segment(udp_socket):
 def reassemble_file(received_files, output_directory, file_id, total_files):
     """
     Reassemble and save the file from its segments after everything is received.
-    Verifies the MD5 checksum of the reassembled file.
+    we verify the MD5 checksum of the reassembled file.
     """
     # Determine the file type and number based on the file_id
     if file_id % 2 == 0:
@@ -106,12 +121,14 @@ def reassemble_file(received_files, output_directory, file_id, total_files):
         file_type = "large"
     file_number = file_id // 2
 
+    # Sort the segments by sequence number
     sorted_segments = sorted(received_files[file_id].values(), key=lambda x: x['sequence_number'])
-    file_data = b''.join(segment['data'] for segment in sorted_segments)
+    file_data = b''.join(segment['data'] for segment in sorted_segments) # Join the data of the segments
 
+    # Save the reassembled file
     output_file_path = os.path.join(output_directory, f"{file_type}-{file_number}.obj")
     with open(output_file_path, 'wb') as file:
-        file.write(file_data)
+        file.write(file_data) # Write the data to the file
 
     # Assuming the function verify_checksum exists
     if verify_checksum(output_file_path, file_type, file_number):
@@ -129,56 +146,60 @@ def is_not_corrupt(segment):
     return True
 
 def has_sequence_number(segment, expected_seq_num):
-    # Check if the segment has the expected sequence number
+    """
+        basic function to check if the segment has the expected sequence number
+    """
     return segment['sequence_number'] == expected_seq_num
 
 
 def GBN_receiver(udp_socket):
+    """
+        We tried to implement the GBN receiver FSM here we again inspired by the FSM of the GBN receiver diagram in the book
+        basically we are waiting for the segments and sending acks back to the sender
+        if the segment is not corrupted and has the expected sequence number we send ack back to the sender with the expected sequence number
+        if the segment is corrupted or has the wrong sequence number we send ack back to the sender with the last acked sequence number
+        to make the sender resend the segment necessary
+    """
 
     received_segments = {} # Dictionary to store received segments
     output_directory = "./received_files"  # Define the output directory
 
+    # directory to save received files
     if not os.path.exists(output_directory):
         os.makedirs(output_directory)
 
-    expected_seq_num = 0  # Start with expecting the first sequence number
+    expected_seq_num = 0  # Start with expecting the first sequence number, segments starts with 0 in the implementation
 
     while True:
-        # segment = receive_segment(udp_socket)
-        buffer_size = 1024*10*WINDOW_SIZE
+        buffer_size = 1024*10*WINDOW_SIZE   #  setting the buffersize
         bytes_address_pair = udp_socket.recvfrom(buffer_size)
         segment = pickle.loads(bytes_address_pair[0])  # Deserialize the segment using pickle  
         address = bytes_address_pair[1]
         
-
-        if segment and is_not_corrupt(segment):
-            # checksum = calculate_checksum(segment['sequence_number'])  # Replace with actual method to compute checksum
+        if segment and is_not_corrupt(segment): 
             checksum = "" 
-            if  has_sequence_number(segment, expected_seq_num):
+            if  has_sequence_number(segment, expected_seq_num): # check if the segment has the expected sequence number
                 print(f"Segment {segment['sequence_number']} received.")
-                send_ack(udp_socket, address,expected_seq_num, checksum)
-                expected_seq_num += 1  # Increment the expected sequence number
-            else:
+                send_ack(udp_socket, address,expected_seq_num, checksum)    # send ack back to the sender
+                expected_seq_num += 1                       # Increment the expected sequence number
+            else:           # this means the segment is corrupted or has the wrong sequence number
                 print(f"Out-of-order segment received. Expected: {expected_seq_num}, got: {segment['sequence_number']}")
-                send_ack(udp_socket, address, expected_seq_num, checksum)
-             # process the segment and send ack
+                send_ack(udp_socket, address, expected_seq_num, checksum)   # send ack back to the sender with the last acked sequence number
+
             
-            is_last_segment = process_segment(segment, received_segments)
-            if is_last_segment:
+            is_last_segment = process_segment(segment, received_segments)   # process the segment and save it to the received_segments dictionary
+            if is_last_segment: # if its the last segment of the file then we reassemble the file and save it
                 # here reassemble the file and save it
                 reassemble_file(received_segments, output_directory, segment['file_id'],20)
                 print(f"File {segment['file_id']} reassembled and saved.")
 
-        # If the packet is not the one we expect, we do nothing and wait for the next one
-        # The FSM diagram shows no action in the case of default (unexpected packet)
-
 
 def start_server():
-    local_ip = "server"
-    # local_ip = "127.0.0.1"
-    local_port = 8000
-    udp_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
-    udp_socket.bind((local_ip, local_port))
+    local_ip = "server"  # this is for docker usage
+    # local_ip = "127.0.0.1"  # this is for the local case
+    local_port = 8000   # port assign
+    udp_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)   # creating the udp socket
+    udp_socket.bind((local_ip, local_port)) 
 
     print("UDP server up and listening")
 
